@@ -1,0 +1,169 @@
+import numpy as np
+from collections import deque
+from bluepy.btle import Scanner, DefaultDelegate
+from scipy.optimize import least_squares
+import time
+import requests
+
+NODES_POSITIONS = {
+    "fijo_1": (0, 0),
+    "fijo_2": (0, 1.75),
+    "fijo_3": (2.20, 1.50),
+    "fijo_4": (2.15, 0),
+    "fijo_5": (4.3, 1.50),
+    "fijo_6": (4.3, 0),
+    "fijo_7": (6.45, 1.50),
+    "fijo_8": (6.45, 0),
+    "fijo_9": (8.6, 1.50),
+    "fijo_10": (8.6, 0),
+    "fijo_11": (10.75, 1.50),
+    "fijo_12": (10.75, 0),
+    "fijo_13": (12.9, 1.50),
+    "fijo_14": (12.9, 0),
+}
+
+FIXED_NODES_MACS = {
+    "fijo_1": "dc:a6:32:17:bd:bb",
+    "fijo_2": "dc:a6:32:19:43:4e",
+    "fijo_3": "dc:a6:32:19:65:e3",
+    "fijo_4": "dc:a6:32:b2:cf:08",
+    "fijo_5": "dc:a6:32:1b:7c:3f",
+    "fijo_6": "d8:3a:dd:f6:f5:1e",
+    "fijo_7": "d8:3a:dd:f7:65:8d",
+    "fijo_8": "d8:3a:dd:f7:60:af",
+    "fijo_9": "d8:3a:dd:f6:f6:fc",
+    "fijo_10": "d8:3a:dd:f7:63:4e",
+    "fijo_11": "d8:3a:dd:f7:62:8c",
+    "fijo_12": "d8:3a:dd:f6:f9:fb",
+    "fijo_13": "d8:3a:dd:f7:62:a4",
+    "fijo_14": "d8:3a:dd:f7:62:cd",
+}
+
+TX_POWER = -59
+N = 3.5
+RSSI_WINDOW_SIZE = 10
+
+SERVER_URL = 'http://IP_DEL_PC:3000/update_position'
+
+class ScanDelegate(DefaultDelegate):
+    def __init__(self):
+        DefaultDelegate.__init__(self)
+
+rssi_history = {mac.lower(): deque(maxlen=RSSI_WINDOW_SIZE) for mac in FIXED_NODES_MACS.values()}
+
+def scan_bluetooth(scan_time=3.0, max_nodes=3):
+    scanner = Scanner().withDelegate(ScanDelegate())
+    devices = scanner.scan(scan_time)
+    distances = {}
+
+    for dev in devices:
+        mac_address = dev.addr.lower()
+        if mac_address in rssi_history:
+            rssi_history[mac_address].append(dev.rssi)
+            avg_rssi = np.mean(rssi_history[mac_address])
+            distance = 10 ** ((TX_POWER - avg_rssi) / (10 * N))
+            distances[mac_address] = distance
+            print(f"Nodo fijo detectado (MAC: {dev.addr}), RSSI promedio: {avg_rssi:.2f}, Distancia: {distance:.2f} m")
+
+    sorted_distances = dict(sorted(distances.items(), key=lambda item: item[1]))
+    closest_distances = dict(list(sorted_distances.items())[:max_nodes])
+
+    return closest_distances
+
+def multilateration_least_squares(fixed_distances):
+    positions = []
+    dists = []
+
+    for name, mac in FIXED_NODES_MACS.items():
+        if mac.lower() in fixed_distances:
+            positions.append(NODES_POSITIONS[name])
+            dists.append(fixed_distances[mac.lower()])
+
+    if len(positions) < 3:
+        print("Se necesitan mediciones de al menos 3 nodos fijos para multilateración.")
+        return None
+
+    positions = np.array(positions)
+    dists = np.array(dists)
+
+    def residuals(pos, positions, dists):
+        return [np.linalg.norm(pos - p) - d for p, d in zip(positions, dists)]
+
+    initial_guess = np.mean(positions, axis=0)
+    result = least_squares(residuals, initial_guess, args=(positions, dists))
+
+    est_x, est_y = result.x
+    if not (0 <= est_x <= 13 and 0 <= est_y <= 2):
+        print(f"Posición estimada fuera de rango: {result.x}, descartada.")
+        return None
+
+    return result.x
+
+class KalmanFilter:
+    def __init__(self, dt, initial_state, initial_covariance, process_noise, measurement_noise):
+        self.dt = dt
+        self.state = np.array(initial_state).reshape(-1, 1)
+        self.covariance = np.array(initial_covariance)
+        self.process_noise = np.array(process_noise)
+        self.measurement_noise = np.array(measurement_noise)
+
+        self.F = np.array([
+            [1, 0, dt, 0],
+            [0, 1, 0, dt],
+            [0, 0, 1, 0 ],
+            [0, 0, 0, 1 ]
+        ])
+
+        self.H = np.array([
+            [1, 0, 0, 0],
+            [0, 1, 0, 0]
+        ])
+
+    def predict(self):
+        self.state = self.F @ self.state
+        self.covariance = self.F @ self.covariance @ self.F.T + self.process_noise
+
+    def update(self, measurement):
+        z = np.array(measurement).reshape(-1, 1)
+        y = z - self.H @ self.state
+        S = self.H @ self.covariance @ self.H.T + self.measurement_noise
+        K = self.covariance @ self.H.T @ np.linalg.inv(S)
+        self.state = self.state + K @ y
+        I = np.eye(self.covariance.shape[0])
+        self.covariance = (I - K @ self.H) @ self.covariance
+        return self.state[:2].flatten()
+
+kf = KalmanFilter(
+    dt=1.0,
+    initial_state=[0, 0, 0, 0],
+    initial_covariance=np.eye(4) * 0.01,
+    process_noise=np.diag([0.1, 0.1, 0.1, 0.1]),
+    measurement_noise=np.diag([0.2, 0.2])
+)
+
+def send_position_to_server(x, y):
+    try:
+        data = {'x': float(x), 'y': float(y)}
+        response = requests.post(SERVER_URL, json=data)
+        print(f"Enviado a servidor: {data} | Respuesta: {response.status_code}")
+    except Exception as e:
+        print(f"Error al enviar datos al servidor: {e}")
+
+if __name__ == "__main__":
+    while True:
+        distances = scan_bluetooth(3.0, max_nodes=3)
+        estimated_position_raw = multilateration_least_squares(distances)
+
+        kf.predict()
+
+        if estimated_position_raw is not None:
+            filtered_position = kf.update(estimated_position_raw)
+            print(f"\nUbicación estimada (sin filtro): {estimated_position_raw}")
+            print(f"Ubicación filtrada (Kalman): {filtered_position}\n")
+
+            send_position_to_server(filtered_position[0], filtered_position[1])
+
+        else:
+            print(f"Predicción Kalman (sin medida): {kf.state[:2].flatten()}\n")
+
+        time.sleep(1)
