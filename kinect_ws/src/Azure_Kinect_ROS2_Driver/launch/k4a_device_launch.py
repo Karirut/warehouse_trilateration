@@ -1,6 +1,6 @@
-//Karina Ruiz 
-//Aylín Millan 
-//Olivia Navarrete
+#Karina Ruiz 
+#Aylín Millan 
+#Olivia Navarrete
 
 import os
 from launch import LaunchDescription
