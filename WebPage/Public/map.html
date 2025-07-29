@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <link rel="icon" href="/carrito.ico" type="image/x-icon">
+    <link rel="stylesheet" href="style.css">
+    <script src="/libs/createjs.min.js"></script>
+    <script src="/libs/roslib.min.js"></script>
+    <script src="libs/ros2d.min.js"></script>
+    <script src="/socket.io/socket.io.js"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Paquete Actual y Ubicación de Robot/Raspberry Pi</title>
+    <style>
+        /* Tus estilos CSS existentes aquí */
+        h1 {
+            color: #03407A;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .map-and-details-container {
+            display: flex;
+            flex-wrap: wrap; /* Permite que los elementos se envuelvan en pantallas pequeñas */
+            gap: 20px;
+            justify-content: center;
+        }
+
+        .map-column {
+            flex: 2; /* Ocupa más espacio en la distribución */
+            min-width: 300px; /* Ancho mínimo para evitar que se comprima demasiado */
+        }
+
+        #map-container {
+            border: 1px solid #ddd;
+            background-color: #e9e9e9;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden; /* Oculta cualquier parte de la imagen que se salga */
+            position: relative; /* Necesario para posicionar mensajes de estado */
+        }
+
+        #mapCanvas {
+            max-width: 100%; /* Asegura que el canvas sea responsivo */
+            height: auto; /* Mantiene la relación de aspecto */
+            display: block; /* Elimina espacio extra debajo del canvas */
+        }
+
+        #statusMessage {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: rgba(255, 255, 255, 0.8);
+            padding: 10px;
+            border-radius: 5px;
+            font-weight: bold;
+        }
+
+        .package-details-column {
+            flex: 1; /* Ocupa menos espacio que el mapa */
+            min-width: 280px; /* Ancho mínimo */
+            background-color: #f9f9f9;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: inset 0 0 5px rgba(0, 0, 0, 0.05);
+        }
+
+        .package-details-column h2 {
+            color: #3174A7;
+            margin-top: 0;
+            margin-bottom: 15px;
+            text-align: center;
+        }
+
+        #transit_pkg_column {
+            max-height: 400px; /* Altura máxima para el scroll si hay muchos paquetes */
+            overflow-y: auto;
+            padding-right: 5px; /* Espacio para la barra de scroll */
+        }
+
+        .tarjeta-pkg {
+            background-color: white;
+            border: 1px solid #eee;
+            border-radius: 6px;
+            padding: 10px;
+            margin-bottom: 10px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+        }
+
+        .tarjeta-pkg h3 {
+            color: #ABB5D9;
+            margin-top: 0;
+            margin-bottom: 8px;
+            font-size: 1.1em;
+        }
+
+        .tarjeta-pkg p {
+            margin: 4px 0;
+            font-size: 0.9em;
+        }
+
+        #position-info {
+            margin-top: 20px;
+            padding-top: 15px;
+            border-top: 1px solid #eee;
+        }
+
+        #position-info p {
+            font-size: 1em;
+            font-weight: bold;
+            margin-bottom: 8px;
+        }
+
+        /* Media queries para responsividad */
+        @media (max-width: 768px) {
+            .map-and-details-container {
+                flex-direction: column; /* Apila las columnas en pantallas pequeñas */
+            }
+            .map-column, .package-details-column {
+                min-width: unset; /* Reinicia el ancho mínimo */
+                width: 100%; /* Ocupa todo el ancho disponible */
+            }
+        }
+    </style>
+</head>
+<body>
+    <header class="navbar">
+        <div class="navbar-brand">Mi Almacén</div>
+        <nav class="navbar-nav">
+            <a href="/dashboard" class="nav-link">Inicio</a>
+            <a href="/table" class="nav-link">Inventario</a>
+            <a href="/map" class="nav-link">Paquete Actual</a>
+            <button onclick="logout()" class="nav-link logout-button">Cerrar Sesión</button>
+        </nav>
+    </header>
+
+    <div class="container main-content">
+        <h1>Paquete en Movimiento y Trayectoria del Robot</h1>
+
+        <div class="map-and-details-container">
+            <div class="map-column">
+                <div id="map-container">
+                    <canvas id="mapCanvas"></canvas>
+                   
+                </div>
+            </div>
+
+            <div class="package-details-column">
+                <h2>Paquetes en Tránsito</h2>
+                <div id="transit_pkg_column">
+                    <p>Cargando paquetes en tránsito...</p>
+                </div>
+                <div id="position-info">
+                    <p id="position-robot-display">Esperando datos de Robot...</p>
+                    <p id="position-rasp-display">Esperando datos de Raspberry Pi...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        async function logout() {
+            await fetch('/logout', { method: 'POST' });
+            window.location.href = '/'; // Redirige a la página de login
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+
+            const mapCanvas = document.getElementById('mapCanvas');
+            const ctx = mapCanvas.getContext('2d');
+
+            if (!mapCanvas || !ctx) {
+                console.error("Error: El elemento canvas o su contexto 2D no se encontraron.");
+                return;
+            }
+
+            const MAP_RESOLUTION = 0.05; // meters/pixel (matches YAML)
+            const MAP_ORIGIN_X = -23.8; // X origin from YAML
+            const MAP_ORIGIN_Y = -31; // Y origin from YAML
+            const MAP_IMAGE_PATH = 'robocov_map_circuito.png';
+
+            let mapImage = new Image();
+            let isMapLoaded = false;
+
+            // === Variables separadas para cada dispositivo ===
+            let currentRobotX = null;
+            let currentRobotY = null;
+            let currentRaspberryPiX = null;
+            let currentRaspberryPiY = null;
+            // ===========================================
+
+            let transitPackages = []; // Para los paquetes en tránsito
+
+            // Función para convertir coordenadas del mundo real (metros) a píxeles del canvas
+            function worldToPixel(worldX, worldY) {
+                const pixelX = (worldX - MAP_ORIGIN_X) / MAP_RESOLUTION;
+                // El eje Y se invierte en ROS respecto al canvas (0,0 arriba izquierda)
+                const pixelY = mapCanvas.height - ((worldY - MAP_ORIGIN_Y) / MAP_RESOLUTION);
+                return { x: pixelX, y: pixelY };
+            }
+
+            // Función principal para dibujar el mapa y todos los elementos (robot, rasp pi, paquetes)
+            function drawMapAndElements() {
+                if (!isMapLoaded) {
+                    return;
+                }
+
+                ctx.clearRect(0, 0, mapCanvas.width, mapCanvas.height); // Limpiar todo el canvas
+                ctx.drawImage(mapImage, 0, 0, mapCanvas.width, mapCanvas.height); // Dibujar el mapa
+
+                // --- Dibujar la posición del ROBOT PRINCIPAL ---
+                if (currentRobotX !== null && currentRobotY !== null) {
+                    const { x: pixelX, y: pixelY } = worldToPixel(currentRobotX, currentRobotY);
+
+                    const robotSize = 20; // Tamaño del robot principal (más grande para diferenciar)
+                    ctx.fillStyle = 'red'; // Color para el robot principal
+                    ctx.beginPath();
+                    ctx.arc(pixelX, pixelY, robotSize / 2, 0, Math.PI * 2, false); // Círculo para el robot
+                    ctx.fill();
+                    ctx.strokeStyle = 'darkred';
+                    ctx.lineWidth = 2;
+                    ctx.stroke();
+
+                    // Etiqueta para el robot
+                    ctx.font = '12px Arial';
+                    ctx.fillStyle = 'black';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'bottom';
+                    ctx.fillText('Robot', pixelX, pixelY - robotSize / 2 - 2);
+                }
+
+                // --- Dibujar la posición de la RASPBERRY PI ---
+                if (currentRaspberryPiX !== null && currentRaspberryPiY !== null) {
+                    const { x: pixelX, y: pixelY } = worldToPixel(currentRaspberryPiX, currentRaspberryPiY);
+
+                    const raspPiSize = 15; // Tamaño de la Raspberry Pi (diferente al robot)
+                    ctx.fillStyle = 'blue'; // Color para la Raspberry Pi
+                    ctx.fillRect(pixelX - raspPiSize / 2, pixelY - raspPiSize / 2, raspPiSize, raspPiSize); // Cuadrado para la Raspberry Pi
+                    ctx.strokeStyle = 'darkblue';
+                    ctx.lineWidth = 1;
+                    ctx.stroke();
+
+                    // Etiqueta para la Raspberry Pi
+                    ctx.font = '12px Arial';
+                    ctx.fillStyle = 'black';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'top';
+                    ctx.fillText('Rasp Pi', pixelX, pixelY + raspPiSize / 2 + 2);
+                }
+
+                // --- Dibujar Paquetes en Tránsito ---
+                transitPackages.forEach(pkg => {
+                    // Asegúrate de que los paquetes también tienen coordenadas x, y
+                    if (pkg.package_x !== undefined && pkg.package_y !== undefined) {
+                        const { x: pixelX, y: pixelY } = worldToPixel(pkg.package_x, pkg.package_y);
+
+                        const packageSize = 10;
+                        ctx.fillStyle = 'green'; // Color para los paquetes
+                        ctx.beginPath();
+                        ctx.arc(pixelX, pixelY, packageSize / 2, 0, Math.PI * 2, false);
+                        ctx.fill();
+
+                        ctx.strokeStyle = 'darkgreen';
+                        ctx.lineWidth = 1;
+                        ctx.stroke();
+
+                        ctx.font = '10px Arial';
+                        ctx.fillStyle = 'black';
+                        ctx.textAlign = 'left';
+                        ctx.textBaseline = 'middle';
+                        ctx.fillText(`Pkg: ${pkg.ID_Paquete}`, pixelX + packageSize / 2 + 2, pixelY);
+                    }
+                });
+            }
+
+            // --- Lógica de carga y redimensionamiento del mapa ---
+            mapImage.onload = () => {
+                isMapLoaded = true;
+                mapCanvas.width = mapImage.width;
+                mapCanvas.height = mapImage.height;
+
+                const container = document.getElementById('map-container');
+                const aspectRatio = mapImage.width / mapImage.height;
+                let newWidth = container.offsetWidth;
+                let newHeight = newWidth / aspectRatio;
+
+                if (newHeight > container.offsetHeight) {
+                    newHeight = container.offsetHeight;
+                    newWidth = newHeight * aspectRatio;
+                }
+
+                mapCanvas.style.width = `${newWidth}px`;
+                mapCanvas.style.height = `${newHeight}px`;
+
+                //document.getElementById('statusMessage').textContent = 'Mapa cargado. Esperando datos de dispositivos...';
+                drawMapAndElements();
+            };
+            mapImage.onerror = () => {
+                console.error("Error loading map image:", MAP_IMAGE_PATH);
+                document.getElementById('statusMessage').textContent = `Error al cargar el mapa: ${MAP_IMAGE_PATH}. Asegúrate de que la imagen existe.`;
+            };
+            mapImage.src = MAP_IMAGE_PATH; // Inicia la carga de la imagen del mapa
+
+            window.addEventListener('resize', () => {
+                if (isMapLoaded) {
+                    const container = document.getElementById('map-container');
+                    const aspectRatio = mapImage.width / mapImage.height;
+                    let newWidth = container.offsetWidth;
+                    let newHeight = newWidth / aspectRatio;
+
+                    if (newHeight > container.offsetHeight) {
+                        newHeight = container.offsetHeight;
+                        newWidth = newHeight * aspectRatio;
+                    }
+
+                    mapCanvas.style.width = `${newWidth}px`;
+                    mapCanvas.style.height = `${newHeight}px`;
+
+                    drawMapAndElements();
+                }
+            });
+
+            // --- Configuración de Socket.IO para recibir posiciones de Raspberry Pi ---
+            const socket = io();
+            socket.on('connect', () => {
+                console.log("WebSocket conectado al servidor Express.");
+                //document.getElementById('statusMessage').textContent = 'Conectado al servidor Express.';
+            });
+
+            socket.on('disconnect', () => {
+                console.log("WebSocket desconectado del servidor Express.");
+                document.getElementById('statusMessage').textContent = 'Desconectado del servidor Express.';
+            });
+
+            // Escuchar el evento DEDICADO para la posición de la RASPBERRY PI (desde app.js vía Socket.IO)
+            socket.on('raspberry_pi_position_update', (data) => {
+                console.log("Posición de RASPBERRY PI recibida (Socket.IO):", data);
+                document.getElementById('position-rasp-display').textContent = `Raspberry Pi - X: ${data.x.toFixed(2)}, Y: ${data.y.toFixed(2)}`;
+                currentRaspberryPiX = data.x;
+                currentRaspberryPiY = data.y;
+                drawMapAndElements(); // Redibujar con la nueva posición de la Raspberry Pi
+            });
+
+
+            // --- Configuración de ROSLIB.js para suscripción a /odom para el Robot Principal ---
+            // Asegúrate de que rosbridge_server esté corriendo y sea accesible en esta URL
+            const ros = new ROSLIB.Ros({
+                url: 'ws://localhost:9090' // ¡CAMBIA ESTO! Asegúrate que es la IP/puerto correcto de tu rosbridge_server
+            });
+
+            ros.on('connection', function() {
+                console.log('Conectado a rosbridge_server.');
+                // Puedes actualizar un mensaje de estado si lo deseas
+            });
+
+            ros.on('error', function(error) {
+                console.error('Error de conexión a rosbridge_server:', error);
+                document.getElementById('position-robot-display').textContent = `Error ROS: ${error.message}`;
+            });
+
+            ros.on('close', function() {
+                console.log('Conexión a rosbridge_server cerrada.');
+                document.getElementById('position-robot-display').textContent = 'Conexión ROS cerrada.';
+            });
+
+            // Suscribirse al tópico /odom
+            const odomTopic = new ROSLIB.Topic({
+                ros: ros,
+                name: '/odom',
+                messageType: 'nav_msgs/Odometry' // Asegúrate de que el tipo de mensaje sea correcto
+            });
+
+            odomTopic.subscribe(function(message) {
+                // console.log('Mensaje de Odometría recibido:', message);
+
+                // Extraer la posición (x, y) de la odometría
+                // La posición está en message.pose.pose.position
+                const robotX = message.pose.pose.position.x;
+                const robotY = message.pose.pose.position.y;
+
+                // Actualizar las variables de posición del robot principal
+                currentRobotX = robotX;
+                currentRobotY = robotY;
+
+                // Actualizar la visualización en el HTML
+                document.getElementById('position-robot-display').textContent = `Robot - X: ${robotX.toFixed(2)}, Y: ${robotY.toFixed(2)}`;
+                drawMapAndElements(); // Redibujar con la nueva posición del robot
+            });
+
+
+            // --- Funciones de autenticación y carga de paquetes ---
+            function logout() {
+                fetch('/logout', { method: 'POST' })
+                    .then(response => {
+                        if (response.ok) {
+                            window.location.href = '/login';
+                        } else {
+                            console.error('Error al cerrar sesión');
+                        }
+                    })
+                    .catch(error => console.error('Error de red al cerrar sesión:', error));
+            }
+
+            async function loadTransitPackages() {
+                try {
+                    const response = await fetch('/api/items?locationStatus=En Transito');
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    const data = await response.json();
+                    transitPackages = data.items;
+
+                    const transit_pkg_column = document.getElementById('transit_pkg_column');
+                    transit_pkg_column.innerHTML = ''; // Limpiar antes de añadir
+                    if (transitPackages && transitPackages.length > 0) {
+                        transitPackages.forEach(item => {
+                            const tarjetaPKG = document.createElement('div');
+                            tarjetaPKG.classList.add('tarjeta-pkg');
+                            tarjetaPKG.innerHTML = `
+                                <h3> ID de Paquete: ${item.ID_Paquete || 'N/A'}</h3>
+                                <p><strong>Device ID:</strong> ${item.device_id || 'N/A'}</p>
+                                <p><strong>Categoría:</strong> ${item.Categoria || 'N/A'}</p>
+                                <p><strong>Tipo de Producto:</strong> ${item.Tipo_Producto || 'N/A'}</p>
+                                <p><strong>Estado:</strong> ${item.Estado_Ubicacion || 'N/A'}</p>
+                                ${item.package_x !== undefined && item.package_y !== undefined ? `<p><strong>Ubicación:</strong> X: ${item.package_x.toFixed(2)}, Y: ${item.package_y.toFixed(2)}</p>` : ''}
+                            `;
+                            transit_pkg_column.appendChild(tarjetaPKG);
+                        });
+                    } else {
+                        transit_pkg_column.innerHTML = '<p>No hay paquetes en tránsito.</p>';
+                    }
+                    drawMapAndElements(); // Redibujar después de cargar los paquetes
+                } catch (e) {
+                    console.error('Hay un error al cargar los paquetes: ', e);
+                    document.getElementById('transit_pkg_column').innerHTML = `<p style="color: blue;">Error al cargar los datos: ${e.message}.</p>`
+                }
+            }
+
+            // Cargar paquetes en tránsito al iniciar la página
+            loadTransitPackages();
+        });
+    </script>
+</body>
+</html>

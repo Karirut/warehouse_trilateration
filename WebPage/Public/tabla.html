@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <link rel="icon" href="/carrito.ico" type="image/x-icon">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Información de Paquetes</title>
+    <link rel="stylesheet" href="style.css">
+    <style>
+        /* Estilos adicionales para los botones de paginación */
+        h1{
+            color: #6A498C;
+        }
+        h2{
+            color: #6A498C;
+        }
+        /* Estilo para las tarjetas de ítems */
+        .item-card {
+            background-color: #f9f9f9;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            padding: 15px;
+            margin-bottom: 10px;
+            text-align: left;
+        }
+        .item-card h3 {
+            margin-top: 0;
+            color: #A081BE;
+        }
+        /* Nuevos estilos para las secciones de filtro */
+        .filter-group {
+            display: flex;
+            flex-wrap: wrap; /* Permite que los elementos se envuelvan en pantallas pequeñas */
+            gap: 15px; /* Espaciado entre los elementos del filtro */
+            justify-content: center;
+            align-items: center;
+            margin-bottom: 20px;
+            padding: 15px;
+            background-color: #e9ecef;
+            border-radius: 8px;
+            box-shadow: inset 0 1px 3px rgba(0,0,0,0.1);
+        }
+        .filter-group label {
+            font-weight: bold;
+            color: #343a40;
+        }
+        .filter-group select,
+        .filter-group input[type="text"] {
+            padding: 8px 12px;
+            border: 1px solid #ced4da;
+            border-radius: 4px;
+            font-size: 1rem;
+            flex-grow: 1; /* Permite que los inputs crezcan */
+            max-width: 200px; /* Ancho máximo para los inputs */
+        }
+        .filter-group button {
+            background-color: #baa8c0;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 1rem;
+            transition: background-color 0.2s ease;
+        }
+        .filter-group button:hover {
+            background-color: #8c6c9c;
+        }
+
+        .pagination-controls {
+            margin-top: 20px;
+            display: flex;
+            justify-content: center;
+            align-items: center; /* Alinea verticalmente los elementos */
+            gap: 10px;
+        }
+        .pagination-controls button {
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+            background-color: #baa8c0;
+            color: white;
+            border: none;
+            border-radius: 5px;
+        }
+        .pagination-controls button:hover {
+            background-color: #8c6c9c;
+        }
+        .pagination-controls button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+        /* Indicador de página */
+        #pageIndicator {
+            font-size: 16px;
+            font-weight: bold;
+            margin: 0 10px; /* Espacio alrededor de la etiqueta */
+        }
+
+    </style>
+</head>
+<body>
+    <header class="navbar">
+        <div class="navbar-brand">Mi Almacén</div>
+        <nav class="navbar-nav">
+            <a href="/dashboard" class="nav-link">Inicio</a>
+            <a href="/table" class="nav-link">Inventario</a>
+            <a href="/map" class="nav-link">Paquete Actual</a>
+            <button onclick="logout()" class="nav-link logout-button">Cerrar Sesión</button>
+        </nav>
+    </header>
+
+    <div class="container main-content">
+        <h1>Información de Paquetes</h1>
+
+        <div class="filter-group">
+            <label for="categoryFilter">Categoría:</label>
+            <select id="categoryFilter">
+                <option value="">Todas</option>
+                <option value="Hogar">Hogar</option>
+                <option value="Electrónica">Electrónica</option>
+                <option value="Ropa">Ropa</option>
+                <option value="Mascotas">Mascotas</option>
+                <option value="Herramientas">Herramientas</option>
+                <option value="Alimentos">Alimentos</option>
+                <option value="Musica">Musica</option>
+            </select>
+
+            <label for="productTypeFilter">Tipo de Producto:</label>
+            <input type="text" id="productTypeFilter" placeholder="Ej. Laptop, Libro">
+
+            <label for="packageIdFilter">ID de Paquete:</label>
+            <input type="text" id="packageIdFilter" placeholder="Ej. PQT001">
+
+            <label for="locationStatusFilter">Estado de Ubicación:</label>
+            <select id="locationStatusFilter">
+                <option value="">Todos</option>
+                <option value="No Escaneado">No Escaneado</option>
+                <option value="En Transito">En Tránsito</option>
+            </select>
+
+            <button id="applyFiltersButton">Aplicar Filtros</button>
+        </div>
+
+        <div id="dataContainer">
+            <p>Cargando datos...</p>
+        </div>
+
+        <div class="pagination-controls">
+            <button id="previousPageButton" disabled>Anterior</button>
+            <span id="pageIndicator">Página: 1</span>
+            <button id="nextPageButton" disabled>Siguientes</button>
+        </div>
+    </div>
+
+    <script>
+        async function logout() {
+            await fetch('/logout', { method: 'POST' });
+            window.location.href = '/';
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            // Referencias a los elementos del DOM
+            const categoryFilter = document.getElementById('categoryFilter');
+            const productTypeFilter = document.getElementById('productTypeFilter');
+            const packageIdFilter = document.getElementById('packageIdFilter');
+            const locationStatusFilter = document.getElementById('locationStatusFilter');
+            const applyFiltersButton = document.getElementById('applyFiltersButton');
+            const dataContainer = document.getElementById('dataContainer');
+            const previousPageButton = document.getElementById('previousPageButton');
+            const pageIndicator = document.getElementById('pageIndicator');
+            const nextPageButton = document.getElementById('nextPageButton');
+            const paginationControls = document.querySelector('.pagination-controls');
+
+            // Variables de estado para la paginación y filtros
+            let currentLastEvaluatedKey = null; // lastEvaluatedKey de la respuesta actual del servidor
+            let currentFilters = { // Objeto para almacenar todos los filtros activos
+                category: '',
+                productType: '',
+                packageId: '',
+                locationStatus: ''
+            };
+            let pagesVisitedKeys = [null]; // Historial de ExclusiveStartKeys para cada PÁGINA LÓGICA
+            let currentPageIndex = 0; // Índice de la página LÓGICA actualmente mostrada
+            const itemsPerPage = 10; // Cantidad de elementos a mostrar por PÁGINA LÓGICA
+
+            // Función para renderizar los ítems en el contenedor
+            function renderItems(items) {
+                dataContainer.innerHTML = ''; // Limpia el contenedor antes de añadir nuevos datos
+
+                if (items.length > 0) {
+                    dataContainer.innerHTML = '<h2>Elementos en Almacén:</h2>'; // Título de la sección
+                    items.forEach(item => {
+                        const itemCard = document.createElement('div');
+                        itemCard.classList.add('item-card');
+
+                        itemCard.innerHTML = `
+                            <h3>Device ID: ${item.device_id || 'N/A'}</h3>
+                            <p><strong>Categoría:</strong> ${item.Categoria || 'N/A'}</p>
+                            <p><strong>Estado de Ubicación:</strong> ${item.Estado_Ubicacion || 'N/A'}</p>
+                            <p><strong>ID de Paquete:</strong> ${item.ID_Paquete || 'N/A'}</p>
+                            <p><strong>Tipo de Producto:</strong> ${item.Tipo_Producto || 'N/A'}</p>
+                        `;
+                        dataContainer.appendChild(itemCard);
+                    });
+                } else {
+                    dataContainer.innerHTML = '<p>No se encontraron elementos.</p>';
+                }
+            }
+
+            // Función para actualizar el indicador de página
+            function updatePageIndicator(totalResults = null) {
+                if (totalResults !== null) {
+                    pageIndicator.textContent = `Total de resultados: ${totalResults}`;
+                } else {
+                    pageIndicator.textContent = `Página: ${currentPageIndex + 1}`;
+                }
+            }
+
+            // Función principal para cargar datos paginados con múltiples filtros
+            async function loadItems(filters, pageIndex) {
+                dataContainer.innerHTML = '<p>Cargando datos...</p>';
+                paginationControls.style.display = 'none'; // Ocultar controles de paginación durante la carga
+
+                let collectedItems = []; // Array para acumular los elementos filtrados para la página lógica actual
+                let currentServerExclusiveStartKey = pagesVisitedKeys[pageIndex]; // La clave para la primera llamada al servidor para esta página lógica
+                let hasMoreDataFromServer = true; // Bandera para controlar el bucle de llamadas al servidor
+
+                // Bucle para hacer múltiples llamadas al servidor hasta llenar la página lógica (10 elementos)
+                // o hasta que el servidor no tenga más datos que devolver para el filtro actual.
+                while (collectedItems.length < itemsPerPage && hasMoreDataFromServer) {
+                    let url = `/api/items?limit=${itemsPerPage}`; // Siempre pedimos 10 elementos por llamada al servidor
+
+                    // Añadir todos los filtros a la URL
+                    if (filters.category) url += `&category=${encodeURIComponent(filters.category)}`;
+                    if (filters.productType) url += `&productType=${encodeURIComponent(filters.productType)}`;
+                    if (filters.packageId) url += `&packageId=${encodeURIComponent(filters.packageId)}`;
+                    if (filters.locationStatus) url += `&locationStatus=${encodeURIComponent(filters.locationStatus)}`;
+
+                    if (currentServerExclusiveStartKey) {
+                        url += `&exclusiveStartKey=${encodeURIComponent(JSON.stringify(currentServerExclusiveStartKey))}`;
+                    }
+
+                    try {
+                        const response = await fetch(url);
+                        if (!response.ok) {
+                            throw new Error(`HTTP error! status: ${response.status}`);
+                        }
+                        const data = await response.json();
+
+                        // Añadir los elementos recibidos a nuestra colección
+                        collectedItems = collectedItems.concat(data.items);
+                        
+                        // Actualizar la clave para la próxima llamada al servidor dentro de este bucle.
+                        // ¡CORRECCIÓN DE TIPOGRAFÍA AQUÍ!
+                        currentServerExclusiveStartKey = data.lastEvaluatedKey;
+                        
+                        if (!currentServerExclusiveStartKey) {
+                            hasMoreDataFromServer = false; // No hay más datos en el servidor para este filtro
+                        }
+
+                    } catch (e) {
+                        console.error('Error al cargar los datos:', e);
+                        dataContainer.innerHTML = `<p style="color: red;">Error al cargar los datos: ${error.message}. Verifica la consola del servidor y del navegador.</p>`;
+                        paginationControls.style.display = 'none'; // Ocultar controles en caso de error
+                        return; // Salir de la función si hay un error
+                    }
+                }
+
+                // Una vez que el bucle termina, tenemos suficientes elementos o todos los disponibles.
+                // Renderizamos solo la cantidad de elementos por página lógica (itemsPerPage).
+                renderItems(collectedItems.slice(0, itemsPerPage));
+
+                // Actualizar currentLastEvaluatedKey para la próxima PÁGINA LÓGICA (la que se usará con los botones)
+                // Será la última clave de servidor obtenida si aún hay más datos en el servidor,
+                // o null si ya no hay más datos del servidor.
+                currentLastEvaluatedKey = currentServerExclusiveStartKey;
+
+                // Actualizar el estado de la paginación
+                currentPageIndex = pageIndex;
+                // Si estamos en la "última" página conocida en el historial y hay una LastEvaluatedKey del servidor,
+                // significa que hay más datos para la siguiente página lógica, así que la guardamos.
+                if (currentLastEvaluatedKey && (pageIndex + 1 === pagesVisitedKeys.length)) {
+                    pagesVisitedKeys.push(currentLastEvaluatedKey);
+                } else if (!currentLastEvaluatedKey) {
+                    // Si no hay más LastEvaluatedKey del servidor, hemos llegado al final de los datos para los filtros actuales.
+                    // Aseguramos que no haya claves futuras en el historial más allá de la página actual.
+                    pagesVisitedKeys = pagesVisitedKeys.slice(0, pageIndex + 1);
+                }
+
+                // --- Lógica para adaptar la visibilidad de los controles de paginación ---
+                if (currentPageIndex === 0 && !currentLastEvaluatedKey) {
+                    // Caso: Estamos en la primera página y no hay más elementos (todos los filtrados se obtuvieron).
+                    paginationControls.style.display = 'none'; // Ocultar todo el control de paginación
+                    if (collectedItems.length > 0) {
+                        updatePageIndicator(collectedItems.length); // Mostrar "Total de resultados: X"
+                        pageIndicator.style.display = 'inline-block'; // Asegurarse que el span esté visible
+                    } else {
+                        pageIndicator.style.display = 'none'; // Si no hay resultados, ocultar el span de la página
+                    }
+                } else {
+                    // Caso: Paginación normal (hay más páginas o estamos navegando)
+                    paginationControls.style.display = 'flex'; // Mostrar el control de paginación
+                    previousPageButton.disabled = (currentPageIndex === 0);
+                    nextPageButton.disabled = (!currentLastEvaluatedKey && currentPageIndex >= pagesVisitedKeys.length - 1);
+                    updatePageIndicator(); // Mostrar el número de página actual
+                }
+
+                if (collectedItems.length === 0 && currentPageIndex === 0) {
+                    dataContainer.innerHTML = '<p>No se encontraron elementos con los criterios seleccionados.</p>';
+                }
+            }
+
+            // --- Event Listeners ---
+
+            // Botón unificado para aplicar todos los filtros
+            applyFiltersButton.addEventListener('click', () => {
+                currentFilters.category = categoryFilter.value;
+                currentFilters.productType = productTypeFilter.value.trim();
+                currentFilters.packageId = packageIdFilter.value.trim();
+                currentFilters.locationStatus = locationStatusFilter.value;
+
+                currentLastEvaluatedKey = null; // Reinicia la paginación
+                pagesVisitedKeys = [null];
+                currentPageIndex = 0;
+                loadItems(currentFilters, currentPageIndex);
+            });
+
+            nextPageButton.addEventListener('click', () => {
+                // La lógica de avance ya maneja si estamos en el final del historial o si hay más datos
+                // Se asegura que haya una clave de siguiente página LÓGICA o que aún podamos avanzar en el historial
+                if (currentPageIndex < pagesVisitedKeys.length - 1 || currentLastEvaluatedKey) {
+                    loadItems(currentFilters, currentPageIndex + 1);
+                }
+            });
+
+            previousPageButton.addEventListener('click', () => {
+                if (currentPageIndex > 0) {
+                    loadItems(currentFilters, currentPageIndex - 1);
+                }
+            });
+
+            // Cargar los primeros 10 datos al inicio con los filtros iniciales (vacíos)
+            loadItems(currentFilters, currentPageIndex);
+        });
+    </script>
+</body>
+</html>

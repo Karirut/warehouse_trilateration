@@ -1,0 +1,121 @@
+/* public/style.css */
+
+body {
+    font-family: Monaco, monospace;
+    background-color: #f4f4f4;
+    margin: 0;
+    /* Remover display flex para que el navbar ocupe todo el ancho */
+    /* display: flex; */
+    /* justify-content: center; */
+    /* align-items: center; */
+    min-height: 100vh;
+}
+
+.container {
+    background-color: #fff;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    text-align: center;
+    width: 90%;
+    max-width: 1500px;
+    margin: 20px auto; /* Centrar y añadir margen arriba/abajo */
+}
+
+/* Nuevo estilo para el navbar */
+.navbar {
+    background-color: #6C91C2;
+    color: white;
+    padding: 10px 20px;
+    display: flex;
+    justify-content: space-between; /* Espacio entre marca y navegación */
+    align-items: center;
+    width: 100%;
+    box-sizing: border-box; /* Incluir padding en el ancho */
+}
+
+.navbar-brand {
+    font-size: 24px;
+    font-weight: bold;
+}
+
+.navbar-nav {
+    display: flex;
+    gap: 15px; /* Espacio entre los enlaces */
+}
+
+.nav-link {
+    color: white;
+    text-decoration: none;
+    padding: 8px 12px;
+    border-radius: 4px;
+    transition: background-color 0.3s ease;
+    text-align: center;
+}
+
+.nav-link:hover {
+    background-color: #A4CCF4 ;
+}
+
+.logout-button {
+    background: none;
+    border: 1px solid #6C91C2;
+    cursor: pointer;
+    font-size: 16px;
+}
+
+.logout-button:hover {
+    background-color: #B8C1E0;
+    border-color: #B8C1E0;
+}
+
+/* Ajuste para el contenido principal para que no se pegue al navbar */
+.main-content {
+    margin-top: 20px; /* Margen superior para separar del navbar */
+}
+
+
+h1 {
+    color: #B86263   ;
+}
+
+button {
+    background-color: #7F6A93;
+    color: white;
+    padding: 10px 15px;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 16px;
+    margin-bottom: 20px;
+}
+
+button:hover {
+    background-color: #7F6A93;
+}
+
+#dataContainer {
+    margin-top: 20px;
+    border-top: 1px solid #eee;
+    padding-top: 20px;
+    text-align: left;
+}
+
+.item-card {
+    background-color: #e9ecef;
+    border: 1px solid #dee2e6;
+    border-radius: 5px;
+    padding: 15px;
+    margin-bottom: 10px;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+.item-card h3 {
+    margin-top: 0;
+    color: #c4749c ;
+}
+
+.item-card p {
+    margin: 5px 0;
+    color: #555;
+}

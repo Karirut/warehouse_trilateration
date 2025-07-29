@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <link rel="icon" href="/carrito.ico" type="image/x-icon"> <link rel="stylesheet" href="style.css">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login</title>
+    <link rel="stylesheet" href="style.css"> <style>
+        /* Algunos estilos específicos para el login */
+        .login-container {
+
+            background-color: #fff ;
+            padding: 50px;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            text-align: center;
+            width: 350px;
+            position: center;
+        }
+        .login-container h1 {
+            color: #3F6449 ;
+            margin-bottom: 30px;
+            margin-top: 30px;
+        }
+        .login-container input[type="text"],
+        .login-container input[type="password"] {
+            width: calc(100% - 20px);
+            padding: 10px;
+            margin-bottom: 15px;
+            border: 1px solid #fcf4f4;
+            border-radius: 4px;
+        }
+        .login-container button {
+            width: 100%;
+            padding: 10px;
+            background-color: #9BC0A5;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        .login-container button:hover {
+            background-color: #3F6449  ;
+        }
+        #loginMessage {
+            color: #5FA0BF ;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container login-container">
+        <h1>Iniciar Sesión</h1>
+        <form id="loginForm">
+            <input type="text" id="username" placeholder="Usuario" required><br>
+            <input type="password" id="password" placeholder="Contraseña" required><br>
+            <button type="submit">Entrar</button>
+        </form>
+        <p id="loginMessage"></p>
+    </div>
+
+    <script>
+        // JavaScript para manejar el envío del formulario de login
+        document.addEventListener('DOMContentLoaded', () => {
+            const loginForm = document.getElementById('loginForm');
+            const usernameInput = document.getElementById('username');
+            const passwordInput = document.getElementById('password');
+            const loginMessage = document.getElementById('loginMessage');
+
+            loginForm.addEventListener('submit', async (e) => {
+                e.preventDefault(); // Evita el envío tradicional del formulario
+
+                const username = usernameInput.value;
+                const password = passwordInput.value;
+
+                try {
+                    const response = await fetch('/login', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ username, password })
+                    });
+
+                    const data = await response.json();
+
+                    if (response.ok) {
+                        // Si el login fue exitoso, redirige
+                        window.location.href = '/dashboard';
+                    } else {
+                        // Muestra el mensaje de error del servidor
+                        loginMessage.textContent = data.message || 'Error de login desconocido.';
+                    }
+                } catch (e) {
+                    console.error('Error de red o del servidor:', e);
+                    loginMessage.textContent = 'No se pudo conectar con el servidor de login.';
+                }
+            });
+        });
+    </script>
+</body>
+</html>

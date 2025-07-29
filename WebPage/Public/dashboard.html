@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <link rel="icon" href="/carrito.ico" type="image/x-icon">
+    <link rel="stylesheet" href="style.css">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Buscador de Paquetes</title>
+    <style>
+        /* Estilos específicos para el contenedor del mapa 3D */
+        #container-viewpcd {
+            width: 100%;
+            height: 600px; /* Altura fija para el visor, puedes ajustarla */
+            background-color: #000; /* Fondo oscuro para el espacio 3D */
+            border: 1px solid #ccc;
+            display: flex; /* Para centrar el canvas si fuera necesario */
+            justify-content: center;
+            align-items: center;
+            overflow: hidden; /* Asegura que el canvas no se desborde */
+        }
+
+        /* Asegura que el canvas de Three.js ocupe todo el contenedor */
+        #container-viewpcd canvas {
+            display: block; /* Elimina el espacio extra debajo del canvas */
+            width: 100% !important; /* ¡Importante! Asegura que el canvas ocupe el 100% del ancho */
+            height: 100% !important; /* ¡Importante! Asegura que el canvas ocupe el 100% del alto */
+        }
+
+        /* Estilos para el nuevo diseño de dos columnas */
+        .map-and-db-container {
+            display: flex; /* Habilitar Flexbox */
+            gap: 20px; /* Espacio entre las columnas */
+            flex-wrap: wrap; /* Permite que las columnas se envuelvan en pantallas pequeñas */
+            margin-top: 20px; /* Espacio superior para separar del título */
+        }
+
+        .map-space {
+            flex: 2; /* Esta columna tomará 2 partes del espacio disponible */
+            min-width: 350px; /* Ancho mínimo para la columna del mapa */
+        }
+
+        /* Estilos para la columna de búsqueda de paquetes */
+        .db-column {
+            flex: 1; /* Esta columna tomará 1 parte del espacio disponible */
+            min-width: 250px; /* Ancho mínimo para la columna de detalles */
+            background-color: #f9f9f9; /* Fondo claro */
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start; /* Alinea el contenido a la izquierda */
+            text-align: left; /* Alinea el texto a la izquierda */
+            overflow-y: auto; /* Permite desplazamiento si hay muchos paquetes */
+            max-height: 600px; /* Limita la altura para que no se desborde */
+        }
+
+        .db-column h2 {
+            color: #567B60;
+            margin-bottom: 15px;
+            text-align: center; /* Centrar el título */
+            width: 100%; /* Asegurar que el h2 ocupe todo el ancho para centrar */
+        }
+
+        .db-column label {
+            font-weight: bold;
+            margin-bottom: 5px;
+            display: block; /* Para que la etiqueta ocupe su propia línea */
+        }
+
+        .db-column input[type="text"] {
+            width: calc(100% - 20px); /* Ancho completo menos padding */
+            padding: 8px 10px;
+            margin-bottom: 15px;
+            border: 1px solid #ced4da;
+            border-radius: 4px;
+            font-size: 1rem;
+        }
+
+        .db-column button {
+            background-color: #9DB5B2;
+            color: white;
+            padding: 10px 15px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 1rem;
+            transition: background-color 0.2s ease;
+            width: 100%; /* Botón al 100% de ancho */
+            margin-bottom: 20px;
+        }
+
+        .db-column button:hover {
+            background-color: #6D9277;
+        }
+
+        .db-column #pkg-container p {
+            color: #555;
+            font-size: 1em;
+            margin-bottom: 5px;
+        }
+
+        .db-column .tarjeta-pkg {
+            border: 1px solid #e0e0e0;
+            border-radius: 5px;
+            padding: 10px;
+            margin-bottom: 10px;
+            background-color: #fff;
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+        .db-column .tarjeta-pkg h3 {
+            color: #6D9277;
+            margin-top: 0;
+            margin-bottom: 5px;
+            font-size: 1.1em;
+        }
+
+        /* Ajuste para el h1 del título "Buscador de Paquetes" */
+        h1 {
+            color: #3F6449;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <header class="navbar">
+        <div class="navbar-brand">Mi Almacén</div>
+        <nav class="navbar-nav">
+            <a href="/dashboard" class="nav-link">Inicio</a>
+            <a href="/table" class="nav-link">Inventario</a>
+            <a href="/map" class="nav-link">Paquete Actual</a>
+            <button onclick="logout()" class="nav-link logout-button">Cerrar Sesión</button>
+        </nav>
+    </header>
+
+    <div class="container main-content">
+        <h1>Buscador de Paquetes</h1>
+        <div class="map-and-db-container">
+            <div class="map-space">
+                <div id="container-viewpcd">
+                    <p>Cargando modelo 3D...</p> 
+                </div>
+            </div>
+            <div id="db-column" class="db-column">
+                <h2>Busca tu paquete</h2>
+                <label for="searchpkg">ID de Paquete:</label>
+                <input type="text" id="searchpkg" placeholder="Ej. PQT001">
+                <button id="lookforpkg">Buscar Paquete</button>
+                <div id="pkg-container">
+                    <p>Ingresa un ID de paquete para buscar.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/PCDLoader.js"></script>
+
+    <script>
+        async function logout() {
+            await fetch('/logout', { method: 'POST' });
+            window.location.href = '/'; // Redirige a la página de login
+        }
+
+        // --- Lógica del visor 3D (Three.js) ---
+        document.addEventListener('DOMContentLoaded', function () {
+            const pcdContainer = document.getElementById('container-viewpcd');
+            if (!pcdContainer) {
+                console.error("Contenedor PCD no encontrado.");
+                return;
+            }
+
+            let containerWidth = pcdContainer.clientWidth;
+            let containerHeight = pcdContainer.clientHeight;
+
+            // 1. Configuración de la Escena
+            const scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x333333); // Color de fondo gris oscuro
+
+            // Variables globales para los cubos
+            let packageCube = null;
+            let redCube = null; // Variable para el cubo rojo
+
+            // 2. Configuración de la Cámara
+            const camera = new THREE.PerspectiveCamera(75, containerWidth / containerHeight, 0.1, 1000);
+            camera.position.z = 10;
+            camera.position.y = 5;
+            camera.position.x = 5;
+            camera.lookAt(0,0,0); // Mirar al origen
+
+            // 3. Configuración del Renderizador
+            const renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(containerWidth, containerHeight);
+            pcdContainer.appendChild(renderer.domElement);
+
+            // 4. Controles Orbitales
+            const controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true; // Suaviza los movimientos
+            controls.dampingFactor = 0.25;
+            controls.screenSpacePanning = false; // Bloquea el paneo en el plano de la pantalla
+            controls.maxPolarAngle = Math.PI / 2; // Evita que la cámara se vaya por debajo del "suelo"
+
+            // 5. Cargar el modelo PCD (ej. 'almacen.pcd' en la carpeta public)
+            const loader = new THREE.PCDLoader();
+            loader.load(
+                'nube_puntos.pcd', // Asegúrate de que este archivo PCD exista en tu carpeta 'public'
+                function (points) {
+                    scene.add(points);
+
+                    // Asegúrate de que el bounding box esté calculado
+                    points.geometry.computeBoundingBox();
+
+                    // Obtener el punto mínimo (esquina inferior izquierda-trasera)
+                    const minCoords = points.geometry.boundingBox.min;
+                    // Obtener el punto máximo (esquina superior derecha-frontal)
+                    const maxCoords = points.geometry.boundingBox.max;
+
+                    // Calcular el tamaño total del modelo
+                    const size = new THREE.Vector3();
+                    points.geometry.boundingBox.getSize(size); // Almacena el tamaño en el vector 'size'
+
+                    console.log("--- Dimensiones del PCD ---");
+                    console.log("Coordenadas mínimas (X, Y, Z):", minCoords.x.toFixed(2), minCoords.y.toFixed(2), minCoords.z.toFixed(2));
+                    console.log("Coordenadas máximas (X, Y, Z):", maxCoords.x.toFixed(2), maxCoords.y.toFixed(2), maxCoords.z.toFixed(2));
+                    console.log("Tamaño total (Ancho, Alto, Profundidad):");
+                    console.log("  Ancho (X):", size.x.toFixed(2)); 
+                    console.log("  Alto (Y):", size.y.toFixed(2));
+                    console.log("  Profundidad (Z):", size.z.toFixed(2));
+                    console.log("--------------------------");
+
+                    // También puedes obtener el centro del modelo (útil para centrar la cámara)
+                    const center = new THREE.Vector3();
+                    points.geometry.boundingBox.getCenter(center);
+                    console.log("Centro del modelo (X, Y, Z):", center.x.toFixed(2), center.y.toFixed(2), center.z.toFixed(2));
+
+                    // Opcional: Centrar la cámara en los puntos cargados
+                    controls.target.copy(center); // Ahora usa el 'center' calculado
+                    // Ajustar posición inicial de la cámara para ver todo el modelo
+                    const maxDim = Math.max(size.x, size.y, size.z);
+                    camera.position.copy(center.clone().add(new THREE.Vector3(maxDim * 0.8, maxDim * 0.8, maxDim * 0.8))); // Posición offset
+                    camera.lookAt(center); // Asegurarse de que mire al centro del modelo
+                    controls.update(); // Actualizar controles después de cambiar el objetivo
+
+                    // Remover el mensaje de carga
+                    const loadingMessage = pcdContainer.querySelector('p');
+                    if (loadingMessage) {
+                        loadingMessage.remove();
+                    }
+                },
+                function (xhr) {
+                    // Actualizar el mensaje de carga con el progreso
+                    const loadingMessage = pcdContainer.querySelector('p');
+                    if (loadingMessage) {
+                        loadingMessage.textContent = `Cargando modelo 3D... ${ ( xhr.loaded / xhr.total * 100 ).toFixed(2) }%`;
+                    }
+                    console.log( ( xhr.loaded / xhr.total * 100 ) + '% loaded' );
+                },
+                function (error) {
+                    console.error( 'An error happened loading the PCD file:', error );
+                    const loadingMessage = pcdContainer.querySelector('p');
+                    if (loadingMessage) {
+                        loadingMessage.textContent = 'Error al cargar el modelo 3D. Verifica la consola para más detalles.';
+                        loadingMessage.style.color = 'red';
+                    }
+                }
+            );
+
+            // 6. Bucle de animación
+            function animate() {
+                requestAnimationFrame(animate);
+                controls.update(); // Solo es necesario si enableDamping o autoRotate están activados
+                renderer.render(scene, camera);
+            }
+            animate();
+            window.addEventListener('resize', function () {
+                containerWidth = pcdContainer.clientWidth;
+                containerHeight = pcdContainer.clientHeight;
+
+                camera.aspect = containerWidth / containerHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(containerWidth, containerHeight);
+            }, false);
+
+            // --- Lógica para destacar el paquete en el 3D (cubo azul) ---
+            function highlightPackageLocation(x, y, z) {
+                // Si ya hay un cubo de paquete, lo removemos antes de añadir el nuevo
+                if (packageCube) {
+                    scene.remove(packageCube);
+                }
+
+                // Crear la geometría del cubo (tamaño, por ejemplo, 0.5 unidades)
+                const geometry = new THREE.BoxGeometry(0.5, 0.5, 0.5); 
+                // Crear el material de color azul, puedes ajustar la opacidad si quieres que sea translúcido
+                const material = new THREE.MeshBasicMaterial({ color: 0x0000ff, transparent: true, opacity: 0.7 }); // Azul
+                
+                // Crear el cubo
+                packageCube = new THREE.Mesh(geometry, material);
+                
+                // Posicionar el cubo en las coordenadas dadas
+                packageCube.position.set(x, y, z);
+                
+                // Añadir el cubo a la escena
+                scene.add(packageCube);
+
+                // Opcional: Centrar la cámara en el cubo recién creado para una mejor vista
+                controls.target.copy(packageCube.position);
+                controls.update();
+                camera.position.set(x + 5, y + 5, z + 5); // Un poco de offset para ver el cubo
+                camera.lookAt(packageCube.position);
+                controls.update();
+            }
+
+            // --- LÓGICA MODIFICADA PARA EL CUBO ROJO ---
+            function toggleRedCube(show) {
+                // Si el cubo rojo ya existe y su estado de visibilidad es el mismo que 'show', no hacemos nada
+                if (redCube && (scene.children.includes(redCube) === show)) {
+                    return;
+                }
+
+                // Si no existe y se pide mostrar, lo creamos
+                if (show && !redCube) {
+                    const geometry = new THREE.BoxGeometry(0.5, 0.5, 0.5); 
+                    const material = new THREE.MeshBasicMaterial({ color: 0x7D7DFF }); // Rojo
+                    redCube = new THREE.Mesh(geometry, material);
+                    redCube.position.set(0.71, 0.3, -2.5); // Posición fija del cubo rojo
+                    scene.add(redCube);
+                    console.log("Cubo rojo añadido en (0.71, 0.3, -2.5)");
+                } 
+                // Si existe y se pide ocultar, lo removemos
+                else if (!show && redCube) {
+                    scene.remove(redCube);
+                    console.log("Cubo rojo removido.");
+                    redCube = null; // Reiniciar la variable para que pueda ser creado de nuevo si es necesario
+                }
+            }
+            // --- FIN LÓGICA MODIFICADA PARA EL CUBO ROJO ---
+
+            // --- Lógica para buscar paquete por ID ---
+            const searchpkgInput = document.getElementById('searchpkg');
+            const lookforpkgButton = document.getElementById('lookforpkg');
+            const pkgContainer = document.getElementById('pkg-container');
+
+            async function searchPackageById() {
+                const packageId = searchpkgInput.value.trim();
+                pkgContainer.innerHTML = '<p>Buscando paquete...</p>';
+
+                // Siempre limpiar el cubo azul al iniciar una nueva búsqueda
+                if (packageCube) {
+                    scene.remove(packageCube);
+                    packageCube = null;
+                }
+                
+                // Al iniciar la búsqueda, ocultamos el cubo rojo por defecto
+                toggleRedCube(false);
+
+
+                if (!packageId) {
+                    pkgContainer.innerHTML = '<p>Por favor, ingresa un ID de paquete para buscar.</p>';
+                    return;
+                }
+
+                try {
+                    // Usamos el filtro begins_with para ID_Paquete, como ya configuraste en app.js
+                    const response = await fetch(`/api/items?packageId=${encodeURIComponent(packageId)}`);
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+
+                    const data = await response.json();
+                    const foundItems = data.items;
+
+                    if (foundItems.length > 0) {
+                        pkgContainer.innerHTML = '<h2>Resultados de la búsqueda:</h2>';
+                        foundItems.forEach(item => {
+                            const tarjetaPKG = document.createElement('div');
+                            tarjetaPKG.classList.add('tarjeta-pkg');
+
+                            tarjetaPKG.innerHTML = `
+                                <h3> ID de Paquete: ${item.ID_Paquete || 'N/A'}</h3>
+                                <p><strong>Device ID:</strong> ${item.device_id || 'N/A'}</p>
+                                <p><strong>Categoría:</strong> ${item.Categoria || 'N/A'}</p>
+                                <p><strong>Tipo de Producto:</strong> ${item.Tipo_Producto || 'N/A'}</p>
+                                <p><strong>Estado:</strong> ${item.Estado_Ubicacion || 'N/A'}</p>
+                                <p><strong>Coordenadas:</strong> X: ${item.Coordenada_X || 'N/A'}, Y: ${item.Coordenada_Y || 'N/A'}, Z: ${item.Coordenada_Z || 'N/A'}</p>
+                            `;
+                            pkgContainer.appendChild(tarjetaPKG);
+
+                            // Si el paquete tiene coordenadas, resaltarlo en el 3D
+                            if (item.Coordenada_X && item.Coordenada_Y && item.Coordenada_Z) {
+                                highlightPackageLocation(
+                                    parseFloat(item.Coordenada_X),
+                                    parseFloat(item.Coordenada_Y),
+                                    parseFloat(item.Coordenada_Z)
+                                );
+                            }
+
+                            // --- LÓGICA PARA MOSTRAR EL CUBO ROJO SEGÚN LA CATEGORÍA ---
+                            if (item.Categoria && item.Categoria.toLowerCase() === 'ropa') {
+                                toggleRedCube(true); // Mostrar el cubo rojo
+                            }
+                            // --- FIN LÓGICA PARA MOSTRAR EL CUBO ROJO SEGÚN LA CATEGORÍA ---
+                        });
+                    } else {
+                        pkgContainer.innerHTML = `<p>No se encontraron paquetes con ID que comience con "${packageId}".</p>`;
+                    }
+
+                } catch (error) {
+                    console.error('Error al buscar paquete:', error);
+                    pkgContainer.innerHTML = `<p style="color: red;">Error al buscar: ${error.message}.</p>`;
+                }
+            }
+
+            // Event listener para el botón de búsqueda
+            lookforpkgButton.addEventListener('click', searchPackageById);
+
+            // Opcional: Buscar al presionar Enter en el input
+            searchpkgInput.addEventListener('keypress', function(event) {
+                if (event.key === 'Enter') {
+                    searchPackageById();
+                }
+            });
+        });
+    </script>
+</body>
+</html>
