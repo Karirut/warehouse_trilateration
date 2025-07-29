@@ -1,3 +1,8 @@
+// Karina Ruiz 
+// Aylin Millan 
+// Olivia Navarrete
+
+
 import numpy as np
 from collections import deque
 from bluepy.btle import Scanner, DefaultDelegate
