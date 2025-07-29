@@ -1,3 +1,7 @@
+//Karina Ruiz 
+//Aylín Millan 
+//Olivia Navarrete
+
 import os
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, OpaqueFunction
